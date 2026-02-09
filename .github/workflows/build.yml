@@ -1,4 +1,5 @@
-name: Build
+name: Build  # ✅ SOLO UNA VEZ - Elimina la segunda ocurrencia
+
 on:
   push:
     branches:
@@ -14,6 +15,7 @@ on:
       - 'gradle/wrapper/**'
       - 'gradlew'
       - 'gradlew.bat'
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -70,48 +72,100 @@ jobs:
       - name: Output Static
         run: ldd ${{ env.BINARY_PATH }}/windows/${{ matrix.file }} || true
 
+  # ✅ JOB CORREGIDO: indentación correcta bajo 'jobs:'
   build-and-test-with-Java-8-and-later:
-  runs-on: ${{ matrix.os }}
-  needs:
-    - analyze-mac-aapt
-    - analyze-linux-aapt
-    - analyze-windows-aapt
-  name: Build/Test (JDK ${{ matrix.java }}, ${{ matrix.os }})
-  permissions:
-    contents: read
-    packages: read
-  strategy:
-    fail-fast: true
-    matrix:
-      os: [ ubuntu-latest, macOS-latest, windows-latest ]
-      java: [ 8, 11, 17, 21 ]
-  steps:
-    - uses: actions/checkout@v6
-    - uses: actions/setup-java@v5
-      with:
-        distribution: 'zulu'
-        java-version: ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    needs:
+      - analyze-mac-aapt
+      - analyze-linux-aapt
+      - analyze-windows-aapt
+    name: Build/Test (JDK ${{ matrix.java }}, ${{ matrix.os }})
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ ubuntu-latest, macOS-latest, windows-latest ]
+        java: [ 8, 11, 17, 21 ]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: ${{ matrix.java }}
 
-    - uses: gradle/actions/setup-gradle@v5.0.1
+      - uses: gradle/actions/setup-gradle@v5.0.1
 
-    # ✅ SOLO ESTE PASO DE AUTENTICACIÓN (reemplaza el anterior)
-    - name: Setup GitHub Packages authentication
-      env:
-        ORG_GRADLE_PROJECT_gpr_user: 'LuisCupul04'
-        ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-      run: |
-        echo "✅ Autenticación configurada vía variables de entorno (OS: $RUNNER_OS)"
+      # ✅ AUTENTICACIÓN CORRECTA
+      - name: Setup GitHub Packages authentication
+        env:
+          ORG_GRADLE_PROJECT_gpr_user: 'LuisCupul04'
+          ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "✅ Autenticación configurada (OS: $RUNNER_OS)"
 
-    - name: Build (Linux/Mac)
-      if: runner.os != 'Windows'
-      env:
-        GITHUB_ACTOR: LuisCupul04
-        GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-      run: ./gradlew build shadowJar --no-daemon --stacktrace
+      - name: Build (Linux/Mac)
+        if: runner.os != 'Windows'
+        env:
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew build shadowJar --no-daemon --stacktrace
 
-    - name: Build (Windows)
-      if: runner.os == 'Windows'
-      env:
-        GITHUB_ACTOR: LuisCupul04
-        GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-      run: ./gradlew.bat build shadowJar --no-daemon --stacktrace
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew.bat build shadowJar --no-daemon --stacktrace
+
+  # ✅ AÑADIR el job 'upload-artifact' que falta
+  upload-artifact:
+    runs-on: ubuntu-latest
+    name: Build apktool.jar
+    if: github.repository == 'LuisCupul04/Apktool' && github.ref == 'refs/heads/main'
+    needs:
+      - build-and-test-with-Java-8-and-later
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v5.0.1
+        with:
+          dependency-graph: generate-and-submit
+
+      - name: Setup GitHub Packages authentication
+        env:
+          ORG_GRADLE_PROJECT_GPR_USER: 'LuisCupul04'
+          ORG_GRADLE_PROJECT_GPR_KEY: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "✅ Configuración de autenticación lista"
+
+      - name: Build (Linux/Mac)
+        if: runner.os != 'Windows'
+        env:
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew build shadowJar --no-daemon --stacktrace
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew.bat build shadowJar --no-daemon --stacktrace
+
+      - name: Upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: apktool.jar
+          path: brut.apktool/apktool-cli/build/libs/apktool-v*
