@@ -25,6 +25,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class ZipRODirectory extends AbstractDirectory {
     private final ZipFile mZipFile;
@@ -130,38 +132,32 @@ public class ZipRODirectory extends AbstractDirectory {
         mFiles = new LinkedHashSet<>();
         mDirs = new LinkedHashMap<>();
 
-        int prefixLen = getPath().length();
+        String currentPath = getPath();
+        String normalizedCurrentPath = currentPath.replace('\\', '/');
+        int prefixLen = currentPath.length();
+
         Enumeration<? extends ZipEntry> entries = getZipFile().entries();
         while (entries.hasMoreElements()) {
             ZipEntry entry = entries.nextElement();
             String name = entry.getName();
 
             String normalizedName = name.replace('\\', '/');
-            String normalizedPath = getPath().replace('\\', '/');
 
-            if (!normalizedName.startsWith(normalizedPath)) {
+            if (!normalizedName.startsWith(normalizedCurrentPath)) {
                 continue;
             }
 
-            String relativePath = normalizedName.substring(normalizedPath.length());
+            String relativePath = normalizedName.substring(normalizedCurrentPath.length());
 
-            if (relativePath.contains("..")) {
-
-                String[] parts = relativePath.split("/");
-                int depth = 0;
-                for (String part : parts) {
-                    if (part.equals("..")) {
-                        depth--;
-                        if (depth < 0) {
-                            continue;
-                        }
-                    } else if (!part.isEmpty() && !part.equals(".")) {
-                        depth++;
-                    }
-                }
-                if (depth < 0) {
-                    continue;
-                }
+            // Use Path normalization to prevent directory traversal (Zip Slip)
+            Path relPath = Paths.get("/").resolve(relativePath).normalize();
+            if (relPath.isAbsolute() && relPath.startsWith("..")) {
+                // Escapes above the logical root, skip this entry
+                continue;
+            }
+            if (relPath.startsWith("..")) {
+                // Relative path still attempts to traverse above root
+                continue;
             }
 
             String subname = name.substring(prefixLen);
