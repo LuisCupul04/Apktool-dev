@@ -136,8 +136,32 @@ public class ZipRODirectory extends AbstractDirectory {
             ZipEntry entry = entries.nextElement();
             String name = entry.getName();
 
-            if (name.equals(getPath()) || !name.startsWith(getPath()) || name.contains(".." + separator)) {
+            String normalizedName = name.replace('\\', '/');
+            String normalizedPath = getPath().replace('\\', '/');
+
+            if (!normalizedName.startsWith(normalizedPath)) {
                 continue;
+            }
+
+            String relativePath = normalizedName.substring(normalizedPath.length());
+
+            if (relativePath.contains("..")) {
+
+                String[] parts = relativePath.split("/");
+                int depth = 0;
+                for (String part : parts) {
+                    if (part.equals("..")) {
+                        depth--;
+                        if (depth < 0) {
+                            continue;
+                        }
+                    } else if (!part.isEmpty() && !part.equals(".")) {
+                        depth++;
+                    }
+                }
+                if (depth < 0) {
+                    continue;
+                }
             }
 
             String subname = name.substring(prefixLen);
