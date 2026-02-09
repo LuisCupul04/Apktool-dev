@@ -143,12 +143,18 @@ public class ZipRODirectory extends AbstractDirectory {
             ZipEntry entry = entries.nextElement();
             String name = entry.getName();
 
+            // Normalize entry name to use forward slashes
             String normalizedName = name.replace('\\', '/');
 
-            if (!normalizedCurrentPath.isEmpty()) {
-                if (!normalizedName.startsWith(normalizedCurrentPath)) {
-                    continue;
-                }
+            // Reject entries with absolute-style paths or any parent-directory segments
+            if (normalizedName.startsWith("/") || normalizedName.equals("..")
+                    || normalizedName.startsWith("../") || normalizedName.contains("/../")) {
+                continue;
+            }
+
+            // Ensure the entry is within the current logical directory
+            if (!normalizedCurrentPath.isEmpty() && !normalizedName.startsWith(normalizedCurrentPath)) {
+                continue;
             }
 
             String relativePath = normalizedCurrentPath.isEmpty()
@@ -157,11 +163,6 @@ public class ZipRODirectory extends AbstractDirectory {
 
             if (relativePath.isEmpty()) {
                 // No path below this directory
-                continue;
-            }
-            // Disallow absolute-style or parent directory segments
-            if (relativePath.startsWith("/") || relativePath.equals("..") || relativePath.startsWith("../")
-                    || relativePath.contains("/../")) {
                 continue;
             }
 
@@ -179,7 +180,7 @@ public class ZipRODirectory extends AbstractDirectory {
             }
 
             // Use only the first path segment as the immediate child name
-            String subname = relativePath;
+            String subname = relPath.toString();
             int pos = subname.indexOf(separator);
             if (pos == -1) {
                 if (!entry.isDirectory()) {
