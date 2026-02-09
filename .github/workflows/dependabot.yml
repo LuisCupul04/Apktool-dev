@@ -1,0 +1,15 @@
+version: 2
+registries:
+  github-packages:
+    type: maven-repository
+    url: https://maven.pkg.github.com/LuisCupul04
+    username: LuisCupul04
+    password: ${{secrets.PACKAGES_TOKEN}}
+
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    registries:
+      - github-packages
+    schedule:
+      interval: "weekly"
