@@ -1,0 +1,48 @@
+name: Analyze
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          java: 17
+
+      - name: Set up JDK 17 for building
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # ✅ PASO NUEVO: Setup Gradle con cache
+      - name: Setup Gradle with caching
+        uses: gradle/actions/setup-gradle@v5.0.1
+        with:
+          cache-read-only: false
+
+      - name: Build project for CodeQL analysis
+        env:
+          # ✅ Aumenta timeout a 60 segundos
+          GRADLE_OPTS: "-Dorg.gradle.internal.http.socketTimeout=60000 -Dorg.gradle.internal.http.connectionTimeout=60000"
+          ORG_GRADLE_PROJECT_GRADLE_WRAPPER_TIMEOUT: 60000
+        run: ./gradlew clean classes
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
