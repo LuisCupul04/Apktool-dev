@@ -24,6 +24,8 @@ env:
 jobs:
   analyze-mac-aapt:
     runs-on: macos-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         file: [ aapt2 ]
@@ -38,6 +40,8 @@ jobs:
 
   analyze-linux-aapt:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         file: [ aapt2 ]
@@ -52,6 +56,8 @@ jobs:
 
   analyze-windows-aapt:
     runs-on: windows-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         file: [ aapt2.exe ]
@@ -71,6 +77,9 @@ jobs:
       - analyze-linux-aapt
       - analyze-windows-aapt
     name: Build/Test (JDK ${{ matrix.java }}, ${{ matrix.os }})
+    permissions:
+      contents: read
+      packages: read  # ✅ AGREGAR PERMISO PARA PAQUETES
     strategy:
       fail-fast: true
       matrix:
@@ -85,14 +94,54 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5.0.1
 
+      # ✅ AGREGAR: Configurar autenticación para GitHub Packages
+      - name: Setup GitHub Packages authentication
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          # Crear archivo de propiedades de Gradle
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/gradle.properties << 'EOF'
+          # Configuración para GitHub Packages
+          gpr.user=LuisCupul04
+          gpr.key=${GH_TOKEN}
+          
+          # Configuración del sistema
+          systemProp.gpr.user=LuisCupul04
+          systemProp.gpr.key=${GH_TOKEN}
+          EOF
+          
+          # Para Windows, también configurar en directorio de usuario
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            echo "Configurando para Windows..."
+            cat > "$USERPROFILE\.gradle\gradle.properties" << EOF
+          gpr.user=LuisCupul04
+          gpr.key=${GH_TOKEN}
+          systemProp.gpr.user=LuisCupul04
+          systemProp.gpr.key=${GH_TOKEN}
+          EOF
+          fi
+          
+          echo "✅ Configuración de autenticación creada"
+
       # ✅ CORREGIDO: Eliminado 'proguard' de los comandos
       - name: Build (Linux/Mac)
         if: runner.os != 'Windows'
-        run: ./gradlew build shadowJar
+        env:
+          # Variables para autenticación
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew build shadowJar --no-daemon --stacktrace
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: ./gradlew.bat build shadowJar
+        env:
+          # Variables para autenticación
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew.bat build shadowJar --no-daemon --stacktrace
 
   upload-artifact:
     runs-on: ubuntu-latest
@@ -100,6 +149,9 @@ jobs:
     if: github.repository == 'LuisCupul04/Apktool' && github.ref == 'refs/heads/main'
     needs:
       - build-and-test-with-Java-8-and-later
+    permissions:
+      contents: read
+      packages: read  # ✅ AGREGAR PERMISO PARA PAQUETES
     steps:
       - uses: actions/checkout@v6
         with:
@@ -114,14 +166,43 @@ jobs:
         with:
           dependency-graph: generate-and-submit
 
+      # ✅ AGREGAR: Configurar autenticación para GitHub Packages
+      - name: Setup GitHub Packages authentication
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          # Crear archivo de propiedades de Gradle
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/gradle.properties << 'EOF'
+          # Configuración para GitHub Packages
+          gpr.user=LuisCupul04
+          gpr.key=${GH_TOKEN}
+          
+          # Configuración del sistema
+          systemProp.gpr.user=LuisCupul04
+          systemProp.gpr.key=${GH_TOKEN}
+          EOF
+          
+          echo "✅ Configuración de autenticación creada"
+
       # ✅ CORREGIDO: Eliminado 'proguard' de los comandos
       - name: Build (Linux/Mac)
         if: runner.os != 'Windows'
-        run: ./gradlew build shadowJar
+        env:
+          # Variables para autenticación
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew build shadowJar --no-daemon --stacktrace
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: ./gradlew.bat build shadowJar
+        env:
+          # Variables para autenticación
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew.bat build shadowJar --no-daemon --stacktrace
 
       - name: Upload
         uses: actions/upload-artifact@v6
