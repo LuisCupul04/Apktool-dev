@@ -2,7 +2,7 @@ name: Build
 on:
   push:
     branches:
-      - main
+      - master
   pull_request:
     paths:
       - '**.java'
@@ -184,6 +184,15 @@ jobs:
           EOF
           
           echo "✅ Configuración de autenticación creada"
+          
+          # ✅ CONFIGURAR: Usar variables de entorno para autenticación (Funciona en Windows, Mac, Linux)
+      - name: Setup GitHub Packages authentication
+        env:
+          # Gradle leerá automáticamente estas variables
+          ORG_GRADLE_PROJECT_GPR_USER: 'LuisCupul04'
+          ORG_GRADLE_PROJECT_GPR_KEY: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "✅ Configuración de autenticación lista (Variables de entorno)"
 
       # ✅ CORREGIDO: Eliminado 'proguard' de los comandos
       - name: Build (Linux/Mac)
