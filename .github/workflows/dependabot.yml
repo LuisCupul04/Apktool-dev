@@ -1,15 +1,36 @@
-version: 2
-registries:
-  github-packages:
-    type: maven-repository
-    url: https://maven.pkg.github.com/LuisCupul04
-    username: LuisCupul04
-    password: ${{secrets.PACKAGES_TOKEN}}
+name: Dependabot
+on:
+  schedule:
+    # Ejecutar diariamente a las 8:00 AM UTC
+    - cron: '0 8 * * *'
+  # También permitir ejecución manual
+  workflow_dispatch:
 
-updates:
-  - package-ecosystem: "gradle"
-    directory: "/"
-    registries:
-      - github-packages
-    schedule:
-      interval: "weekly"
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: read
+      
+    steps:
+      - name: Dependabot Update
+        uses: github/dependabot-action@main
+        env:
+          # Desactivar limpieza para debugging
+          DEPENDABOT_DISABLE_CLEANUP: 1
+          # Desactivar chequeo de conectividad (opcional)
+          DEPENDABOT_ENABLE_CONNECTIVITY_CHECK: 0
+          # Token para crear PRs
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Token para el job (puede ser el mismo)
+          GITHUB_DEPENDABOT_JOB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Token específico para acceder a packages privados
+          GITHUB_DEPENDABOT_CRED_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        with:
+          operation: update
