@@ -15,6 +15,7 @@ jobs:
     permissions:
       security-events: write
       contents: read
+      packages: read  # ✅ AGREGAR ESTE PERMISO
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -37,12 +38,28 @@ jobs:
         with:
           cache-read-only: false
 
+      # ✅ PASO NUEVO: Configurar credenciales para GitHub Packages
+      - name: Setup authentication for GitHub Packages
+        run: |
+          # Crear archivo de propiedades de Gradle con credenciales
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/gradle.properties << EOF
+          gpr.user=LuisCupul04
+          gpr.token=${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          systemProp.gpr.user=LuisCupul04
+          systemProp.gpr.token=${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          EOF
+          echo "Gradle properties configured for GitHub Packages"
+
       - name: Build project for CodeQL analysis
         env:
           # ✅ Aumenta timeout a 60 segundos
           GRADLE_OPTS: "-Dorg.gradle.internal.http.socketTimeout=60000 -Dorg.gradle.internal.http.connectionTimeout=60000"
           ORG_GRADLE_PROJECT_GRADLE_WRAPPER_TIMEOUT: 60000
-        run: ./gradlew clean classes
+          # ✅ Variables de entorno para autenticación
+          GITHUB_ACTOR: LuisCupul04
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew clean classes --no-daemon
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
