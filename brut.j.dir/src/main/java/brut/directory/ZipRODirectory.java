@@ -134,7 +134,9 @@ public class ZipRODirectory extends AbstractDirectory {
 
         String currentPath = getPath();
         String normalizedCurrentPath = currentPath.replace('\\', '/');
-        int prefixLen = currentPath.length();
+        if (!normalizedCurrentPath.isEmpty() && !normalizedCurrentPath.endsWith("/")) {
+            normalizedCurrentPath = normalizedCurrentPath + "/";
+        }
 
         Enumeration<? extends ZipEntry> entries = getZipFile().entries();
         while (entries.hasMoreElements()) {
@@ -143,25 +145,41 @@ public class ZipRODirectory extends AbstractDirectory {
 
             String normalizedName = name.replace('\\', '/');
 
-            if (!normalizedName.startsWith(normalizedCurrentPath)) {
+            if (!normalizedCurrentPath.isEmpty()) {
+                if (!normalizedName.startsWith(normalizedCurrentPath)) {
+                    continue;
+                }
+            }
+
+            String relativePath = normalizedCurrentPath.isEmpty()
+                    ? normalizedName
+                    : normalizedName.substring(normalizedCurrentPath.length());
+
+            if (relativePath.isEmpty()) {
+                // No path below this directory
+                continue;
+            }
+            // Disallow absolute-style or parent directory segments
+            if (relativePath.startsWith("/") || relativePath.equals("..") || relativePath.startsWith("../")
+                    || relativePath.contains("/../")) {
                 continue;
             }
 
-            String relativePath = normalizedName.substring(normalizedCurrentPath.length());
-
-            // Use Path normalization to prevent directory traversal (Zip Slip)
-            Path relPath = Paths.get("/").resolve(relativePath).normalize();
-            if (relPath.isAbsolute() && relPath.startsWith("..")) {
+            // Additional normalization-based check against traversal
+            Path relPath;
+            try {
+                relPath = Paths.get(relativePath).normalize();
+            } catch (Exception ignored) {
+                // Malformed path, skip it
+                continue;
+            }
+            if (relPath.isAbsolute() || relPath.startsWith("..")) {
                 // Escapes above the logical root, skip this entry
                 continue;
             }
-            if (relPath.startsWith("..")) {
-                // Relative path still attempts to traverse above root
-                continue;
-            }
 
-            String subname = name.substring(prefixLen);
-
+            // Use only the first path segment as the immediate child name
+            String subname = relativePath;
             int pos = subname.indexOf(separator);
             if (pos == -1) {
                 if (!entry.isDirectory()) {
