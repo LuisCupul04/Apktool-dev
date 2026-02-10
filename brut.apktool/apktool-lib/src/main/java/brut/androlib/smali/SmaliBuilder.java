@@ -78,6 +78,17 @@ public class SmaliBuilder {
         Exception cause;
         try {
             File smaliFile = new File(mSmaliDir, fileName);
+            try {
+                // Ensure that the smali file path derived from the archive does not escape mSmaliDir
+                File canonicalBase = mSmaliDir.getCanonicalFile();
+                File canonicalSmaliFile = smaliFile.getCanonicalFile();
+                if (!canonicalSmaliFile.toPath().startsWith(canonicalBase.toPath())) {
+                    throw new AndrolibException("Invalid smali file path: " + fileName);
+                }
+            } catch (IOException ex) {
+                throw new AndrolibException("Failed to resolve smali file path: " + fileName, ex);
+            }
+
             success = buildFile(smaliFile, dexBuilder, mApiLevel);
             cause = null;
         } catch (Exception ex) {

@@ -190,6 +190,17 @@ public class ApkBuilder {
 
     private void buildSourcesSmaliJob(File outDir, String dirName, String fileName) throws AndrolibException {
         File smaliDir = new File(mApkDir, dirName);
+        try {
+            // Ensure that the smali directory derived from the archive does not escape mApkDir
+            File canonicalApkDir = mApkDir.getCanonicalFile();
+            File canonicalSmaliDir = smaliDir.getCanonicalFile();
+            if (!canonicalSmaliDir.toPath().startsWith(canonicalApkDir.toPath())) {
+                throw new AndrolibException("Invalid smali directory name: " + dirName);
+            }
+        } catch (IOException ex) {
+            throw new AndrolibException("Failed to resolve smali directory: " + dirName, ex);
+        }
+
         if (!smaliDir.isDirectory()) {
             return;
         }
