@@ -1,4 +1,4 @@
-name: Build  # ✅ SOLO UNA VEZ - Elimina la segunda ocurrencia
+name: Build and Test
 
 on:
   push:
@@ -24,108 +24,102 @@ env:
   BINARY_PATH: brut.apktool/apktool-lib/src/main/resources/prebuilt
 
 jobs:
-  analyze-mac-aapt:
-    runs-on: macos-latest
-    permissions:
-      contents: read
-    strategy:
-      matrix:
-        file: [ aapt2 ]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Fix permissions for prebuilt binaries
-        run: chmod -R +x ${{ env.BINARY_PATH }}
-      - name: Verify Executable
-        run: ${{ env.BINARY_PATH }}/macosx/${{ matrix.file }} version
-      - name: Output Static
-        run: otool -L ${{ env.BINARY_PATH }}/macosx/${{ matrix.file }} || true
-
-  analyze-linux-aapt:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      matrix:
-        file: [ aapt2 ]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Fix permissions for prebuilt binaries
-        run: chmod -R +x ${{ env.BINARY_PATH }}
-      - name: Verify Executable
-        run: ${{ env.BINARY_PATH }}/linux/${{ matrix.file }} version
-      - name: Output Static
-        run: ldd ${{ env.BINARY_PATH }}/linux/${{ matrix.file }} || true
-
-  analyze-windows-aapt:
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    strategy:
-      matrix:
-        file: [ aapt2.exe ]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Fix permissions for prebuilt binaries
-        run: chmod -R +x ${{ env.BINARY_PATH }}
-      - name: Verify Executable
-        run: ${{ env.BINARY_PATH }}/windows/${{ matrix.file }} version
-      - name: Output Static
-        run: ldd ${{ env.BINARY_PATH }}/windows/${{ matrix.file }} || true
-
-  # ✅ JOB CORREGIDO: indentación correcta bajo 'jobs:'
-  build-and-test-with-Java-8-and-later:
+  verify-binaries:
     runs-on: ${{ matrix.os }}
-    needs:
-      - analyze-mac-aapt
-      - analyze-linux-aapt
-      - analyze-windows-aapt
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            binary_dir: linux
+            binary_name: aapt2
+            check_cmd: ldd
+          - os: macos-latest
+            binary_dir: macosx
+            binary_name: aapt2
+            check_cmd: otool -L
+          - os: windows-latest
+            binary_dir: windows
+            binary_name: aapt2.exe
+            check_cmd: dir
+    name: Verify binaries on ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Fix permissions for prebuilt binaries
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "Windows doesn't need chmod"
+          else
+            chmod -R +x ${{ env.BINARY_PATH }}
+          fi
+      
+      - name: Verify executable exists
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            dir "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+          else
+            ls -la "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+          fi
+      
+      - name: Test binary execution
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cmd //c "${{ env.BINARY_PATH }}\\${{ matrix.binary_dir }}\\${{ matrix.binary_name }}" version
+          else
+            "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}" version
+          fi
+      
+      - name: Check dependencies (Linux/Mac only)
+        if: matrix.os != 'windows-latest'
+        run: ${{ matrix.check_cmd }} "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    needs: verify-binaries
     name: Build/Test (JDK ${{ matrix.java }}, ${{ matrix.os }})
     permissions:
       contents: read
       packages: read
     strategy:
-      fail-fast: true
+      fail-fast: false  # Cambiado a false para ver todos los resultados
       matrix:
-        os: [ ubuntu-latest, macOS-latest, windows-latest ]
-        java: [ 8, 11, 17, 21 ]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        java: [8, 11, 17, 21]
     steps:
       - uses: actions/checkout@v6
+      
       - uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: ${{ matrix.java }}
-
+      
       - uses: gradle/actions/setup-gradle@v5.0.1
-
-      # ✅ AUTENTICACIÓN CORRECTA
+      
       - name: Setup GitHub Packages authentication
         env:
-          ORG_GRADLE_PROJECT_gpr_user: 'LuisCupul04'
-          ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          ORG_GRADLE_PROJECT_gpr_user: ${{ github.actor }}
+          ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "✅ Autenticación configurada (OS: $RUNNER_OS)"
-
-      - name: Build (Linux/Mac)
-        if: runner.os != 'Windows'
+          echo "Authentication configured for ${{ github.actor }}"
+      
+      - name: Build and test
         env:
-          GITHUB_ACTOR: LuisCupul04
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew build shadowJar --no-daemon --stacktrace
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./gradlew.bat build shadowJar --no-daemon --stacktrace
+          else
+            ./gradlew build shadowJar --no-daemon --stacktrace
+          fi
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        env:
-          GITHUB_ACTOR: LuisCupul04
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew.bat build shadowJar --no-daemon --stacktrace
-
-  # ✅ AÑADIR el job 'upload-artifact' que falta
-  upload-artifact:
+  build-release:
     runs-on: ubuntu-latest
-    name: Build apktool.jar
+    name: Build Release Artifact
     if: github.repository == 'LuisCupul04/Apktool' && github.ref == 'refs/heads/main'
-    needs:
-      - build-and-test-with-Java-8-and-later
+    needs: build-and-test
     permissions:
       contents: read
       packages: read
@@ -133,39 +127,37 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
+      
       - uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: 17
-
+      
       - uses: gradle/actions/setup-gradle@v5.0.1
         with:
           dependency-graph: generate-and-submit
-
+      
       - name: Setup GitHub Packages authentication
         env:
-          ORG_GRADLE_PROJECT_GPR_USER: 'LuisCupul04'
-          ORG_GRADLE_PROJECT_GPR_KEY: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          ORG_GRADLE_PROJECT_gpr_user: ${{ github.actor }}
+          ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "✅ Configuración de autenticación lista"
-
-      - name: Build (Linux/Mac)
-        if: runner.os != 'Windows'
+          echo "Authentication configured for release build"
+      
+      - name: Build with tests disabled (release)
         env:
-          GITHUB_ACTOR: LuisCupul04
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew build shadowJar --no-daemon --stacktrace
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        env:
-          GITHUB_ACTOR: LuisCupul04
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew.bat build shadowJar --no-daemon --stacktrace
-
-      - name: Upload
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./gradlew shadowJar --no-daemon --stacktrace -x test
+      
+      - name: Upload apktool.jar artifact
         uses: actions/upload-artifact@v6
         with:
-          name: apktool.jar
-          path: brut.apktool/apktool-cli/build/libs/apktool-v*
+          name: apktool-cli
+          path: brut.apktool/apktool-cli/build/libs/apktool-*.jar
+      
+      - name: Upload apktool-lib artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: apktool-lib
+          path: brut.apktool/apktool-lib/build/libs/apktool-lib-*.jar
