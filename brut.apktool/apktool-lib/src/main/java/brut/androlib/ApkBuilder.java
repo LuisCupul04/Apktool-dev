@@ -37,6 +37,8 @@ import brut.util.ZipUtils;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -152,13 +154,39 @@ public class ApkBuilder {
         }
     }
 
+    /**
+     * Resolve a potentially untrusted file name against a base directory,
+     * ensuring that the resulting path stays within that directory and does
+     * not perform directory traversal or use an absolute path.
+     */
+    private File resolveSafeFile(File baseDir, String relativeName) throws AndrolibException {
+        try {
+            Path basePath = baseDir.toPath().toRealPath().normalize();
+            Path relPath = Paths.get(relativeName).normalize();
+
+            // Reject absolute paths and any paths that start with ".."
+            if (relPath.isAbsolute() || relPath.startsWith("..")) {
+                throw new AndrolibException("Invalid path outside base directory: " + relativeName);
+            }
+
+            Path resolved = basePath.resolve(relPath).normalize();
+            if (!resolved.startsWith(basePath)) {
+                throw new AndrolibException("Resolved path escapes base directory: " + relativeName);
+            }
+
+            return resolved.toFile();
+        } catch (IOException | SecurityException ex) {
+            throw new AndrolibException("Unable to resolve path safely: " + relativeName, ex);
+        }
+    }
+
     private boolean copySourcesRaw(File outDir, String fileName) throws AndrolibException {
-        File working = new File(mApkDir, fileName);
+        File working = resolveSafeFile(mApkDir, fileName);
         if (!working.isFile()) {
             return false;
         }
 
-        File stored = new File(outDir, fileName);
+        File stored = resolveSafeFile(outDir, fileName);
         if (!mConfig.isForced() && !isModified(working, stored)) {
             return true;
         }
@@ -190,6 +218,17 @@ public class ApkBuilder {
 
     private void buildSourcesSmaliJob(File outDir, String dirName, String fileName) throws AndrolibException {
         File smaliDir = new File(mApkDir, dirName);
+        try {
+            // Ensure that the smali directory derived from the archive does not escape mApkDir
+            File canonicalApkDir = mApkDir.getCanonicalFile();
+            File canonicalSmaliDir = smaliDir.getCanonicalFile();
+            if (!canonicalSmaliDir.toPath().startsWith(canonicalApkDir.toPath())) {
+                throw new AndrolibException("Invalid smali directory name: " + dirName);
+            }
+        } catch (IOException ex) {
+            throw new AndrolibException("Failed to resolve smali directory: " + dirName, ex);
+        }
+
         if (!smaliDir.isDirectory()) {
             return;
         }
@@ -268,44 +307,46 @@ public class ApkBuilder {
     }
 
     private void buildResourcesFull(File outDir, File manifest) throws AndrolibException {
-    File resourcesFile = new File(outDir.getParentFile(), "resources.zip");
-    if (!mConfig.isForced()) {
-        LOGGER.info("Checking whether resources have changed...");
-        if (!isModified(manifest, new File(outDir, "AndroidManifest.xml"))
-                && !isModified(newFiles(mApkDir, ApkInfo.RESOURCES_DIRNAMES),
-                    newFiles(outDir, ApkInfo.RESOURCES_DIRNAMES))
-                && resourcesFile.isFile()) {
-            return;
-        }
-    }
-    OS.rmfile(resourcesFile);
-
-    if (mConfig.isDebuggable()) {
-        LOGGER.info("Setting 'debuggable' attribute to 'true' in AndroidManifest.xml");
-        ResXmlUtils.setApplicationDebugTagTrue(manifest);
-    }
-
-    if (mConfig.isNetSecConf()) {
-        String targetSdkVersion = mApkInfo.getSdkInfo().getTargetSdkVersion();
-        if (targetSdkVersion != null) {
-            if (SdkInfo.parseSdkInt(targetSdkVersion) < ResConfig.SDK_NOUGAT) {
-                LOGGER.warning("Target SDK version is lower than 24! Network Security Configuration might be ignored!");
+        File resourcesFile = new File(outDir.getParentFile(), "resources.zip");
+        if (!mConfig.isForced()) {
+            LOGGER.info("Checking whether resources have changed...");
+            if (!isModified(manifest, new File(outDir, "AndroidManifest.xml"))
+                    && !isModified(newFiles(mApkDir, ApkInfo.RESOURCES_DIRNAMES),
+                        newFiles(outDir, ApkInfo.RESOURCES_DIRNAMES))
+                    && resourcesFile.isFile()) {
+                return;
             }
         }
+        OS.rmfile(resourcesFile);
 
-        File netSecConfOrig = new File(mApkDir, "res/xml/network_security_config.xml");
-        OS.mkdir(netSecConfOrig.getParentFile());
-        ResXmlUtils.modNetworkSecurityConfig(netSecConfOrig);
-        ResXmlUtils.setNetworkSecurityConfig(manifest);
-        LOGGER.info("Added permissive network security config in manifest");
-    }
+        if (mConfig.isDebuggable()) {
+            LOGGER.info("Setting 'debuggable' attribute to 'true' in AndroidManifest.xml");
+            ResXmlUtils.setApplicationDebugTagTrue(manifest);
+        }
 
-    ExtFile tmpDir = null;
-    try {
-        // ✅ CORRECCIÓN: Crear DIRECTORIO temporal (no archivo)
-        java.nio.file.Path tempDirPath = java.nio.file.Files.createTempDirectory("APKTOOL");
-        tmpDir = new ExtFile(tempDirPath.toFile());
-        
+        if (mConfig.isNetSecConf()) {
+            String targetSdkVersion = mApkInfo.getSdkInfo().getTargetSdkVersion();
+            if (targetSdkVersion != null) {
+                if (SdkInfo.parseSdkInt(targetSdkVersion) < ResConfig.SDK_NOUGAT) {
+                    LOGGER.warning("Target SDK version is lower than 24! Network Security Configuration might be ignored!");
+                }
+            }
+
+            File netSecConfOrig = new File(mApkDir, "res/xml/network_security_config.xml");
+            OS.mkdir(netSecConfOrig.getParentFile());
+            ResXmlUtils.modNetworkSecurityConfig(netSecConfOrig);
+            ResXmlUtils.setNetworkSecurityConfig(manifest);
+            LOGGER.info("Added permissive network security config in manifest");
+        }
+
+        // ✅ CAMBIO SEGURO: Usar OS.createTempDirectory() en lugar de File.createTempFile()
+        ExtFile tmpFile;
+        try {
+            tmpFile = new ExtFile(OS.createTempDirectory());
+        } catch (BrutException ex) {
+            throw new AndrolibException(ex);
+        }
+
         File resDir = new File(mApkDir, "res");
         File npDir = new File(mApkDir, "9patch");
         if (!npDir.isDirectory()) {
@@ -313,42 +354,36 @@ public class ApkBuilder {
         }
 
         LOGGER.info("Building resources with " + AaptManager.getBinaryName() + "...");
-        
-        AaptInvoker invoker = new AaptInvoker(mApkInfo, mConfig);
-        invoker.invoke(tmpDir, manifest, resDir, npDir, null, getIncludeFiles());
+        try {
+            AaptInvoker invoker = new AaptInvoker(mApkInfo, mConfig);
+            invoker.invoke(tmpFile, manifest, resDir, npDir, null, getIncludeFiles());
 
-        Directory tmpDirectory = tmpDir.getDirectory();
-        tmpDirectory.copyToDir(outDir, "AndroidManifest.xml");
-        tmpDirectory.copyToDir(outDir, "resources.arsc");
-        tmpDirectory.copyToDir(outDir, ApkInfo.RESOURCES_DIRNAMES);
-        
-    } catch (IOException | DirectoryException ex) {
-        throw new AndrolibException(ex);
-    } finally {
-        if (tmpDir != null) {
-            try {
-                // ✅ Limpiar directorio temporal recursivamente
-                org.apache.commons.io.FileUtils.deleteDirectory(tmpDir);
-            } catch (IOException e) {
-                LOGGER.warning("Could not delete temp directory: " + e.getMessage());
+            Directory tmpDir = tmpFile.getDirectory();
+            tmpDir.copyToDir(outDir, "AndroidManifest.xml");
+            tmpDir.copyToDir(outDir, "resources.arsc");
+            tmpDir.copyToDir(outDir, ApkInfo.RESOURCES_DIRNAMES);
+        } catch (DirectoryException ex) {
+            throw new AndrolibException(ex);
+        } finally {
+            OS.rmfile(tmpFile);
+        }
+    }
+
+    private void buildManifest(File outDir, File manifest) throws AndrolibException {
+        if (!mConfig.isForced()) {
+            LOGGER.info("Checking whether AndroidManifest.xml has changed...");
+            if (!isModified(manifest, new File(outDir, "AndroidManifest.xml"))) {
+                return;
             }
         }
-    }
-}
 
-private void buildManifest(File outDir, File manifest) throws AndrolibException {
-    if (!mConfig.isForced()) {
-        LOGGER.info("Checking whether AndroidManifest.xml has changed...");
-        if (!isModified(manifest, new File(outDir, "AndroidManifest.xml"))) {
-            return;
+        // ✅ CAMBIO SEGURO: Usar OS.createTempDirectory() en lugar de File.createTempFile()
+        ExtFile tmpFile;
+        try {
+            tmpFile = new ExtFile(OS.createTempDirectory());
+        } catch (BrutException ex) {
+            throw new AndrolibException(ex);
         }
-    }
-
-    ExtFile tmpDir = null;
-    try {
-        // ✅ CORRECCIÓN: Crear DIRECTORIO temporal (no archivo)
-        java.nio.file.Path tempDirPath = java.nio.file.Files.createTempDirectory("APKTOOL");
-        tmpDir = new ExtFile(tempDirPath.toFile());
 
         File npDir = new File(mApkDir, "9patch");
         if (!npDir.isDirectory()) {
@@ -356,29 +391,21 @@ private void buildManifest(File outDir, File manifest) throws AndrolibException 
         }
 
         LOGGER.info("Building AndroidManifest.xml with " + AaptManager.getBinaryName() + "...");
-        
-        AaptInvoker invoker = new AaptInvoker(mApkInfo, mConfig);
-        invoker.invoke(tmpDir, manifest, null, npDir, null, getIncludeFiles());
+        try {
+            AaptInvoker invoker = new AaptInvoker(mApkInfo, mConfig);
+            invoker.invoke(tmpFile, manifest, null, npDir, null, getIncludeFiles());
 
-        Directory tmpDirectory = tmpDir.getDirectory();
-        tmpDirectory.copyToDir(outDir, "AndroidManifest.xml");
-        
-    } catch (IOException | DirectoryException ex) {
-        throw new AndrolibException(ex);
-    } catch (AndrolibException ignored) {
-        LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
-        copyManifestRaw(outDir);
-    } finally {
-        if (tmpDir != null) {
-            try {
-                // ✅ Limpiar directorio temporal recursivamente
-                org.apache.commons.io.FileUtils.deleteDirectory(tmpDir);
-            } catch (IOException e) {
-                LOGGER.warning("Could not delete temp directory: " + e.getMessage());
-            }
+            Directory tmpDir = tmpFile.getDirectory();
+            tmpDir.copyToDir(outDir, "AndroidManifest.xml");
+        } catch (DirectoryException ex) {
+            throw new AndrolibException(ex);
+        } catch (AndrolibException ignored) {
+            LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
+            copyManifestRaw(outDir);
+        } finally {
+            OS.rmfile(tmpFile);
         }
     }
-}
 
     private void copyManifestRaw(File outDir) throws AndrolibException {
         LOGGER.info("Copying raw manifest...");
