@@ -143,14 +143,25 @@ public class ZipRODirectory extends AbstractDirectory {
             ZipEntry entry = entries.nextElement();
             String name = entry.getName();
 
-            // Normalize entry name to use forward slashes
+            // Normalize entry name to use forward slashes first
             String normalizedName = name.replace('\\', '/');
 
-            // Reject entries with absolute-style paths or any parent-directory segments
-            if (normalizedName.startsWith("/") || normalizedName.equals("..")
-                    || normalizedName.startsWith("../") || normalizedName.contains("/../")) {
+            // Use Path normalization to defend against traversal attempts
+            Path entryPath;
+            try {
+                entryPath = Paths.get(normalizedName).normalize();
+            } catch (Exception ignored) {
+                // Malformed path, skip it
                 continue;
             }
+
+            // Reject absolute paths or any path that escapes above the root
+            if (entryPath.isAbsolute() || entryPath.startsWith("..")) {
+                continue;
+            }
+
+            // Work with the normalized string representation from here on
+            normalizedName = entryPath.toString().replace('\\', '/');
 
             // Ensure the entry is within the current logical directory
             if (!normalizedCurrentPath.isEmpty() && !normalizedName.startsWith(normalizedCurrentPath)) {
@@ -166,7 +177,7 @@ public class ZipRODirectory extends AbstractDirectory {
                 continue;
             }
 
-            // Additional normalization-based check against traversal
+            // Additional normalization-based check against traversal on the relative path
             Path relPath;
             try {
                 relPath = Paths.get(relativePath).normalize();
