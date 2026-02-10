@@ -27,10 +27,9 @@ jobs:
         with:
           languages: java-kotlin
           queries: security-extended
-          java: 17
 
       - name: Set up JDK 17 for building
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -45,12 +44,12 @@ jobs:
       - name: Setup GitHub Packages authentication
         env:
           # Gradle leerá automáticamente estas variables como propiedades
-          ORG_GRADLE_PROJECT_gpr_user: 'LuisCupul04'
-          ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          ORG_GRADLE_PROJECT_gpr_user: ${{ github.actor }}
+          ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "✅ Autenticación configurada para GitHub Packages"
           echo "Variables de entorno establecidas:"
-          echo "  - gpr.user: LuisCupul04"
+          echo "  - gpr.user: ${{ github.actor }}"
           echo "  - gpr.key: [PROTEGIDO]"
 
       - name: Build project for CodeQL analysis
@@ -59,8 +58,8 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.internal.http.socketTimeout=60000 -Dorg.gradle.internal.http.connectionTimeout=60000"
           ORG_GRADLE_PROJECT_GRADLE_WRAPPER_TIMEOUT: 60000
           # Variables adicionales por si acaso
-          GITHUB_ACTOR: LuisCupul04
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🚀 Iniciando build para CodeQL..."
           echo "Verificando autenticación..."
