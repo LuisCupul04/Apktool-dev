@@ -39,7 +39,6 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -365,8 +364,8 @@ public class ApkBuilder {
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         } finally {
-            // ✅ Limpiar directorio temporal después de usarlo
-            OS.rmfile(tmpFile);
+            // ✅ CORRECCIÓN CRÍTICA: Usar rmdir en lugar de rmfile para directorios
+            OS.rmdir(tmpFile);
         }
     }
 
@@ -399,8 +398,8 @@ public class ApkBuilder {
             LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
             copyManifestRaw(outDir);
         } finally {
-            // ✅ Limpiar directorio temporal después de usarlo
-            OS.rmfile(tmpFile);
+            // ✅ CORRECCIÓN CRÍTICA: Usar rmdir en lugar de rmfile para directorios
+            OS.rmdir(tmpFile);
         }
     }
 
