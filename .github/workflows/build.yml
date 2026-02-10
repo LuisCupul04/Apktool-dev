@@ -149,16 +149,21 @@ jobs:
         run: |
           echo "Authentication configured for ${{ github.actor }}"
       
-      - name: Build and test
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
         env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: .\gradlew.bat build shadowJar --no-daemon --stacktrace
+
+      - name: Build and test (Unix)
+        if: runner.os != 'Windows'
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            ./gradlew.bat build shadowJar --no-daemon --stacktrace
-          else
-            ./gradlew build shadowJar --no-daemon --stacktrace
-          fi
+        run: ./gradlew build shadowJar --no-daemon --stacktrace
 
   build-release:
     runs-on: ubuntu-latest
