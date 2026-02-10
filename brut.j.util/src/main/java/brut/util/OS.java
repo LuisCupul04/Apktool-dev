@@ -177,17 +177,8 @@ public final class OS {
 
     public static File createTempDirectory() throws BrutException {
         try {
-            File tmp = File.createTempFile("BRUT", null);
-            tmp.deleteOnExit();
-
-            if (!tmp.delete()) {
-                throw new BrutException("Could not delete tmp file: " + tmp.getAbsolutePath());
-            }
-            if (!tmp.mkdir()) {
-                throw new BrutException("Could not create tmp dir: " + tmp.getAbsolutePath());
-            }
-
-            return tmp;
+            // Use NIO to create a secure temporary directory with appropriate permissions.
+            return Files.createTempDirectory("BRUT").toFile();
         } catch (IOException ex) {
             throw new BrutException("Could not create tmp dir", ex);
         }
