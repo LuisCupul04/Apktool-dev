@@ -37,8 +37,6 @@ import brut.util.ZipUtils;
 
 import java.io.*;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -154,39 +152,13 @@ public class ApkBuilder {
         }
     }
 
-    /**
-     * Resolve a potentially untrusted file name against a base directory,
-     * ensuring that the resulting path stays within that directory and does
-     * not perform directory traversal or use an absolute path.
-     */
-    private File resolveSafeFile(File baseDir, String relativeName) throws AndrolibException {
-        try {
-            Path basePath = baseDir.toPath().toRealPath().normalize();
-            Path relPath = Paths.get(relativeName).normalize();
-
-            // Reject absolute paths and any paths that start with ".."
-            if (relPath.isAbsolute() || relPath.startsWith("..")) {
-                throw new AndrolibException("Invalid path outside base directory: " + relativeName);
-            }
-
-            Path resolved = basePath.resolve(relPath).normalize();
-            if (!resolved.startsWith(basePath)) {
-                throw new AndrolibException("Resolved path escapes base directory: " + relativeName);
-            }
-
-            return resolved.toFile();
-        } catch (IOException | SecurityException ex) {
-            throw new AndrolibException("Unable to resolve path safely: " + relativeName, ex);
-        }
-    }
-
     private boolean copySourcesRaw(File outDir, String fileName) throws AndrolibException {
-        File working = resolveSafeFile(mApkDir, fileName);
+        File working = new File(mApkDir, fileName);
         if (!working.isFile()) {
             return false;
         }
 
-        File stored = resolveSafeFile(outDir, fileName);
+        File stored = new File(outDir, fileName);
         if (!mConfig.isForced() && !isModified(working, stored)) {
             return true;
         }
@@ -218,17 +190,6 @@ public class ApkBuilder {
 
     private void buildSourcesSmaliJob(File outDir, String dirName, String fileName) throws AndrolibException {
         File smaliDir = new File(mApkDir, dirName);
-        try {
-            // Ensure that the smali directory derived from the archive does not escape mApkDir
-            File canonicalApkDir = mApkDir.getCanonicalFile();
-            File canonicalSmaliDir = smaliDir.getCanonicalFile();
-            if (!canonicalSmaliDir.toPath().startsWith(canonicalApkDir.toPath())) {
-                throw new AndrolibException("Invalid smali directory name: " + dirName);
-            }
-        } catch (IOException ex) {
-            throw new AndrolibException("Failed to resolve smali directory: " + dirName, ex);
-        }
-
         if (!smaliDir.isDirectory()) {
             return;
         }
@@ -339,13 +300,13 @@ public class ApkBuilder {
             LOGGER.info("Added permissive network security config in manifest");
         }
 
-        // ✅ CAMBIO SEGURO: Usar OS.createTempDirectory() en lugar de File.createTempFile()
         ExtFile tmpFile;
         try {
-            tmpFile = new ExtFile(OS.createTempDirectory());
-        } catch (BrutException ex) {
+            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
+        } catch (IOException ex) {
             throw new AndrolibException(ex);
         }
+        OS.rmfile(tmpFile);
 
         File resDir = new File(mApkDir, "res");
         File npDir = new File(mApkDir, "9patch");
@@ -377,13 +338,13 @@ public class ApkBuilder {
             }
         }
 
-        // ✅ CAMBIO SEGURO: Usar OS.createTempDirectory() en lugar de File.createTempFile()
         ExtFile tmpFile;
         try {
-            tmpFile = new ExtFile(OS.createTempDirectory());
-        } catch (BrutException ex) {
+            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
+        } catch (IOException ex) {
             throw new AndrolibException(ex);
         }
+        OS.rmfile(tmpFile);
 
         File npDir = new File(mApkDir, "9patch");
         if (!npDir.isDirectory()) {
