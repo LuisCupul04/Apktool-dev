@@ -45,23 +45,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       
-      - name: Fix permissions for prebuilt binaries
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "Windows doesn't need chmod"
-          else
-            chmod -R +x ${{ env.BINARY_PATH }}
-          fi
+      - name: Fix permissions for prebuilt binaries (Linux/Mac)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: chmod -R +x ${{ env.BINARY_PATH }}
+      
+      - name: Fix permissions for prebuilt binaries (Windows)
+        if: matrix.os == 'windows-latest'
+        run: echo "Windows doesn't need chmod"
       
       - name: Verify executable exists
+        shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            dir "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+            # Windows usa PowerShell, pero estamos en bash
+            cmd //c dir "${{ env.BINARY_PATH }}\\${{ matrix.binary_dir }}\\${{ matrix.binary_name }}"
           else
             ls -la "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
           fi
       
       - name: Test binary execution
+        shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cmd //c "${{ env.BINARY_PATH }}\\${{ matrix.binary_dir }}\\${{ matrix.binary_name }}" version
@@ -71,6 +75,7 @@ jobs:
       
       - name: Check binary type and dependencies
         if: matrix.os != 'windows-latest'
+        shell: bash
         run: |
           echo "=== Binary Analysis ==="
           
@@ -120,12 +125,14 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_gpr_user: ${{ github.actor }}
           ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           echo "Authentication configured for ${{ github.actor }}"
       
       - name: Build and test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             ./gradlew.bat build shadowJar --no-daemon --stacktrace
@@ -159,12 +166,14 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_gpr_user: ${{ github.actor }}
           ORG_GRADLE_PROJECT_gpr_key: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           echo "Authentication configured for release build"
       
       - name: Build release artifact
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           ./gradlew shadowJar --no-daemon --stacktrace -x test
       
