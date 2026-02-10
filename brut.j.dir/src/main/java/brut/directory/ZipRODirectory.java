@@ -155,8 +155,21 @@ public class ZipRODirectory extends AbstractDirectory {
                 continue;
             }
 
-            // Reject absolute paths or any path that escapes above the root
-            if (entryPath.isAbsolute() || entryPath.startsWith("..")) {
+            // Reject absolute paths
+            if (entryPath.isAbsolute()) {
+                continue;
+            }
+
+            // Reject any path that contains a parent-directory ("..") segment
+            boolean hasParentSegment = false;
+            for (Path segment : entryPath) {
+                String seg = segment.toString();
+                if (seg.equals("..") || seg.isEmpty()) {
+                    hasParentSegment = true;
+                    break;
+                }
+            }
+            if (hasParentSegment) {
                 continue;
             }
 
@@ -185,20 +198,40 @@ public class ZipRODirectory extends AbstractDirectory {
                 // Malformed path, skip it
                 continue;
             }
-            if (relPath.isAbsolute() || relPath.startsWith("..")) {
+            if (relPath.isAbsolute()) {
+            // Reject any parent-directory segments in the relative path
+            boolean relHasParentSegment = false;
+            for (Path segment : relPath) {
+                String seg = segment.toString();
+                if (seg.equals("..") || seg.isEmpty()) {
+                    relHasParentSegment = true;
+                    break;
+                }
+            }
+            if (relHasParentSegment) {
+                continue;
+            }
                 // Escapes above the logical root, skip this entry
                 continue;
             }
 
             // Use only the first path segment as the immediate child name
-            String subname = relPath.toString();
+            String subname = relPath.toString().replace('\\', '/');
             int pos = subname.indexOf(separator);
             if (pos == -1) {
                 if (!entry.isDirectory()) {
-                    mFiles.add(subname);
+                    // subname must be a simple file name without separators or traversal
+                    if (!subname.isEmpty() && !subname.equals("..") && subname.indexOf('/') == -1 && subname.indexOf('\\') == -1) {
+                        mFiles.add(subname);
+                    }
                     continue;
                 }
             } else {
+            // Final sanity check on directory subname
+            if (subname.isEmpty() || subname.equals("..") || subname.indexOf('/') != -1 || subname.indexOf('\\') != -1) {
+                continue;
+            }
+
                 subname = subname.substring(0, pos);
             }
 
