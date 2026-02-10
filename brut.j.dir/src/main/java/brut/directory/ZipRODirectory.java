@@ -25,8 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 public class ZipRODirectory extends AbstractDirectory {
     private final ZipFile mZipFile;
@@ -132,119 +130,65 @@ public class ZipRODirectory extends AbstractDirectory {
         mFiles = new LinkedHashSet<>();
         mDirs = new LinkedHashMap<>();
 
-        String currentPath = getPath();
-        String normalizedCurrentPath = currentPath.replace('\\', '/');
-        if (!normalizedCurrentPath.isEmpty() && !normalizedCurrentPath.endsWith("/")) {
-            normalizedCurrentPath = normalizedCurrentPath + "/";
-        }
-
+    int prefixLen = getPath().length();
         Enumeration<? extends ZipEntry> entries = getZipFile().entries();
         while (entries.hasMoreElements()) {
-            ZipEntry entry = entries.nextElement();
-            String name = entry.getName();
+        ZipEntry entry = entries.nextElement();
+        String name = entry.getName();
 
-            // Normalize entry name to use forward slashes first
-            String normalizedName = name.replace('\\', '/');
+        if (name.equals(getPath()) || !name.startsWith(getPath())) {
+            continue;
+        }
 
-            // Use Path normalization to defend against traversal attempts
-            Path entryPath;
-            try {
-                entryPath = Paths.get(normalizedName).normalize();
-            } catch (Exception ignored) {
-                // Malformed path, skip it
+        String relPath = name.substring(prefixLen);
+        if (isPathTraversal(relPath)) {
+            continue;
+        }
+
+        String subname = relPath;
+
+        int pos = subname.indexOf(separator);
+        if (pos == -1) {
+            if (!entry.isDirectory()) {
+                mFiles.add(subname);
                 continue;
             }
+        } else {
+            subname = subname.substring(0, pos);
+        }
 
-            // Reject absolute paths
-            if (entryPath.isAbsolute()) {
-                continue;
-            }
-
-            // Reject any path that contains a parent-directory ("..") segment
-            boolean hasParentSegment = false;
-            for (Path segment : entryPath) {
-                String seg = segment.toString();
-                if (seg.equals("..") || seg.isEmpty()) {
-                    hasParentSegment = true;
-                    break;
-                }
-            }
-            if (hasParentSegment) {
-                continue;
-            }
-
-            // Work with the normalized string representation from here on
-            normalizedName = entryPath.toString().replace('\\', '/');
-
-            // Ensure the entry is within the current logical directory
-            if (!normalizedCurrentPath.isEmpty() && !normalizedName.startsWith(normalizedCurrentPath)) {
-                continue;
-            }
-
-            String relativePath = normalizedCurrentPath.isEmpty()
-                    ? normalizedName
-                    : normalizedName.substring(normalizedCurrentPath.length());
-
-            if (relativePath.isEmpty()) {
-                // No path below this directory
-                continue;
-            }
-
-            // Additional normalization-based check against traversal on the relative path
-            Path relPath;
-            try {
-                relPath = Paths.get(relativePath).normalize();
-            } catch (Exception ignored) {
-                // Malformed path, skip it
-                continue;
-            }
-
-            // Reject absolute relative paths
-            if (relPath.isAbsolute()) {
-                // Escapes above the logical root, skip this entry
-                continue;
-            }
-
-            // Reject any parent-directory segments or empty segments in the relative path
-            boolean relHasParentSegment = false;
-            for (Path segment : relPath) {
-                String seg = segment.toString();
-                if (seg.equals("..") || seg.isEmpty()) {
-                    relHasParentSegment = true;
-                    break;
-                }
-            }
-            if (relHasParentSegment) {
-                continue;
-            }
-
-            // Use only the first path segment as the immediate child name
-            String subname = relPath.toString().replace('\\', '/');
-            int pos = subname.indexOf(separator);
-            if (pos == -1) {
-                if (!entry.isDirectory()) {
-                    // subname must be a simple file name without separators or traversal
-                    if (!subname.isEmpty() && !subname.equals("..") && subname.indexOf('/') == -1 && subname.indexOf('\\') == -1) {
-                        mFiles.add(subname);
-                    }
-                    continue;
-                }
-            } else {
-                // Final sanity check on directory subname
-                if (subname.isEmpty() || subname.equals("..") || subname.indexOf('/') != -1 || subname.indexOf('\\') != -1) {
-                    continue;
-                }
-
-                subname = subname.substring(0, pos);
-            }
-
-            if (!mDirs.containsKey(subname)) {
-                AbstractDirectory dir = new ZipRODirectory(getZipFile(), getPath() + subname + separator);
-                mDirs.put(subname, dir);
-            }
+        if (!mDirs.containsKey(subname)) {
+            AbstractDirectory dir = new ZipRODirectory(getZipFile(), getPath() + subname + separator);
+            mDirs.put(subname, dir);
         }
     }
+}
 
+    private boolean isPathTraversal(String relPath) {
+    if (relPath == null || relPath.isEmpty()) {
+        return false;
+    }
+    
+    String normalized = relPath.replace('\\', '/');
+    
+    String[] components = normalized.split("/");
+    int depth = 0;
+    
+    for (String component : components) {
+        if (component.isEmpty() || component.equals(".")) {
+            continue;
+        }
+        if (component.equals("..")) {
+            depth--;
+            if (depth < 0) {
+                return true; 
+            }
+        } else {
+            depth++;
+        }
+    }
+    return false;
+}
     private String getPath() {
         return mPath;
     }
