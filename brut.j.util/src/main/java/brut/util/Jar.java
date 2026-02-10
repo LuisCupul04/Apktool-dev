@@ -61,7 +61,7 @@ public final class Jar {
             }
             long suffix = ThreadLocalRandom.current().nextLong();
             suffix = suffix > Long.MIN_VALUE ? Math.abs(suffix) : 0;
-            File fileOut = File.createTempFile(tmpPrefix, suffix + ".tmp");
+            File fileOut = Files.createTempFile(tmpPrefix, suffix + ".tmp").toFile();
             fileOut.deleteOnExit();
 
             BrutIO.copyAndClose(in, Files.newOutputStream(fileOut.toPath()));
