@@ -57,19 +57,39 @@ jobs:
       - name: Verify executable exists
         shell: bash
         run: |
+          echo "=== Checking binary existence ==="
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows usa PowerShell, pero estamos en bash
-            cmd //c dir "${{ env.BINARY_PATH }}\\${{ matrix.binary_dir }}\\${{ matrix.binary_name }}"
+            # En Windows, mostrar la ruta y verificar si existe
+            echo "Windows path: ${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+            if [ -f "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}" ]; then
+              echo "✓ Binary exists"
+              # Mostrar detalles del archivo
+              ls -la "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+            else
+              echo "✗ Binary not found"
+              # Listar directorio para debugging
+              echo "Listing directory:"
+              ls -la "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/" || true
+            fi
           else
+            # Linux/Mac
             ls -la "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
           fi
       
       - name: Test binary execution
         shell: bash
         run: |
+          echo "=== Testing binary execution ==="
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cmd //c "${{ env.BINARY_PATH }}\\${{ matrix.binary_dir }}\\${{ matrix.binary_name }}" version
+            # En Windows, ejecutar directamente desde bash (Git Bash puede ejecutar .exe)
+            echo "Executing Windows binary:"
+            "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}" version || {
+              echo "Direct execution failed, trying alternative method..."
+              # Alternativa: usar cmd
+              cmd /c "cd /d $(pwd) && ${{ env.BINARY_PATH }}\\${{ matrix.binary_dir }}\\${{ matrix.binary_name }} version"
+            }
           else
+            # Linux/Mac
             "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}" version
           fi
       
