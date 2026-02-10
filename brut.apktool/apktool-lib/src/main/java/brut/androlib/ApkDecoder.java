@@ -191,6 +191,17 @@ public class ApkDecoder {
             smaliDir = new File(outDir, "smali_" + fileName.substring(0, fileName.indexOf('.')));
         }
 
+        // Normalize and validate that smaliDir is within outDir to prevent path traversal
+        try {
+            File outDirCanonical = outDir.getCanonicalFile();
+            File smaliDirCanonical = smaliDir.getCanonicalFile();
+            if (!smaliDirCanonical.toPath().startsWith(outDirCanonical.toPath())) {
+                throw new AndrolibException("Refusing to write outside output directory: " + smaliDirCanonical);
+            }
+        } catch (IOException e) {
+            throw new AndrolibException("Failed to validate smali output directory", e);
+        }
+
         OS.mkdir(smaliDir);
 
         LOGGER.info("Baksmaling " + fileName + "...");
