@@ -33,15 +33,12 @@ jobs:
           - os: ubuntu-latest
             binary_dir: linux
             binary_name: aapt2
-            check_cmd: ldd
           - os: macos-latest
             binary_dir: macosx
             binary_name: aapt2
-            check_cmd: otool -L
           - os: windows-latest
             binary_dir: windows
             binary_name: aapt2.exe
-            check_cmd: dir
     name: Verify binaries on ${{ matrix.os }}
     permissions:
       contents: read
@@ -72,9 +69,30 @@ jobs:
             "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}" version
           fi
       
-      - name: Check dependencies (Linux/Mac only)
+      - name: Check binary type and dependencies
         if: matrix.os != 'windows-latest'
-        run: ${{ matrix.check_cmd }} "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+        run: |
+          echo "=== Binary Analysis ==="
+          
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            # Para Linux: verificar tipo de binario
+            file_result=$(file "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}")
+            echo "File type: $file_result"
+            
+            # Intentar ldd solo si es dinámico (no fallar si es estático)
+            if echo "$file_result" | grep -q "dynamically linked"; then
+              echo "Dynamic binary - checking dependencies:"
+              ldd "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+            elif echo "$file_result" | grep -q "statically linked"; then
+              echo "Static binary - no external dependencies"
+            else
+              echo "Unknown binary type, skipping ldd"
+            fi
+          else
+            # Para macOS: siempre usar otool -L
+            echo "macOS binary - checking dependencies with otool:"
+            otool -L "${{ env.BINARY_PATH }}/${{ matrix.binary_dir }}/${{ matrix.binary_name }}"
+          fi
 
   build-and-test:
     runs-on: ${{ matrix.os }}
@@ -84,7 +102,7 @@ jobs:
       contents: read
       packages: read
     strategy:
-      fail-fast: false  # Cambiado a false para ver todos los resultados
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         java: [8, 11, 17, 21]
@@ -144,7 +162,7 @@ jobs:
         run: |
           echo "Authentication configured for release build"
       
-      - name: Build with tests disabled (release)
+      - name: Build release artifact
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
