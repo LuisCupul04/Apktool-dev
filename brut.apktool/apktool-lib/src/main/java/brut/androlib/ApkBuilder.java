@@ -37,6 +37,9 @@ import brut.util.ZipUtils;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -57,6 +60,47 @@ public class ApkBuilder {
         mApkDir = apkDir;
         mConfig = config;
         mFirstError = new AtomicReference<>(null);
+    }
+
+    /**
+     * Creates a secure temporary directory with restricted permissions
+     * to prevent local information disclosure vulnerabilities.
+     */
+    private ExtFile createSecureTempDirectory() throws AndrolibException {
+        try {
+            // Create a temporary directory using secure NIO API
+            Path tempDirPath = Files.createTempDirectory("apktool_");
+            
+            // Set restrictive permissions to prevent other users from accessing
+            try {
+                // POSIX systems (Linux, macOS): set permissions to owner-only
+                Files.setPosixFilePermissions(tempDirPath,
+                    EnumSet.of(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE
+                    ));
+            } catch (UnsupportedOperationException e) {
+                // Non-POSIX systems (Windows): use Java's File methods
+                File tempDir = tempDirPath.toFile();
+                
+                // Remove all permissions for others
+                tempDir.setReadable(false, false);
+                tempDir.setWritable(false, false);
+                tempDir.setExecutable(false, false);
+                
+                // Set permissions for owner only
+                tempDir.setReadable(true);
+                tempDir.setWritable(true);
+                tempDir.setExecutable(true);
+            }
+            
+            LOGGER.fine("Created secure temporary directory: " + tempDirPath);
+            return new ExtFile(tempDirPath.toFile());
+            
+        } catch (IOException ex) {
+            throw new AndrolibException("Failed to create secure temporary directory", ex);
+        }
     }
 
     public void build(File outApk) throws AndrolibException {
@@ -300,13 +344,8 @@ public class ApkBuilder {
             LOGGER.info("Added permissive network security config in manifest");
         }
 
-        ExtFile tmpFile;
-        try {
-            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
-        } catch (IOException ex) {
-            throw new AndrolibException(ex);
-        }
-        OS.rmfile(tmpFile);
+        // ✅ CORRECCIÓN: Usar directorio temporal seguro en lugar de archivo temporal
+        ExtFile tmpFile = createSecureTempDirectory();
 
         File resDir = new File(mApkDir, "res");
         File npDir = new File(mApkDir, "9patch");
@@ -326,6 +365,7 @@ public class ApkBuilder {
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         } finally {
+            // ✅ Limpiar directorio temporal después de usarlo
             OS.rmfile(tmpFile);
         }
     }
@@ -338,13 +378,8 @@ public class ApkBuilder {
             }
         }
 
-        ExtFile tmpFile;
-        try {
-            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
-        } catch (IOException ex) {
-            throw new AndrolibException(ex);
-        }
-        OS.rmfile(tmpFile);
+        // ✅ CORRECCIÓN: Usar directorio temporal seguro en lugar de archivo temporal
+        ExtFile tmpFile = createSecureTempDirectory();
 
         File npDir = new File(mApkDir, "9patch");
         if (!npDir.isDirectory()) {
@@ -364,6 +399,7 @@ public class ApkBuilder {
             LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
             copyManifestRaw(outDir);
         } finally {
+            // ✅ Limpiar directorio temporal después de usarlo
             OS.rmfile(tmpFile);
         }
     }
