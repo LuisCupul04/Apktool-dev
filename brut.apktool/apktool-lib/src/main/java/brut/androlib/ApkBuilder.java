@@ -37,9 +37,6 @@ import brut.util.ZipUtils;
 
 import java.io.*;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -60,92 +57,6 @@ public class ApkBuilder {
         mApkDir = apkDir;
         mConfig = config;
         mFirstError = new AtomicReference<>(null);
-    }
-
-    /**
-     * Creates a secure temporary directory with restricted permissions
-     * to prevent local information disclosure vulnerabilities.
-     * This satisfies CodeQL security requirements.
-     */
-    private ExtFile createSecureTempFile() throws AndrolibException {
-        try {
-            // ✅ SOLUCIÓN SEGURA: Usar Files.createTempDirectory como recomienda CodeQL
-            Path tempDirPath = Files.createTempDirectory("apktool_");
-            
-            // ✅ Establecer permisos restrictivos (solo para el propietario)
-            try {
-                // Para sistemas POSIX (Linux, macOS)
-                Files.setPosixFilePermissions(tempDirPath,
-                    EnumSet.of(
-                        PosixFilePermission.OWNER_READ,
-                        PosixFilePermission.OWNER_WRITE,
-                        PosixFilePermission.OWNER_EXECUTE
-                    ));
-            } catch (UnsupportedOperationException e) {
-                // Para sistemas no-POSIX (Windows), usar métodos alternativos
-                File tempDir = tempDirPath.toFile();
-                
-                // Quitar permisos para otros usuarios
-                tempDir.setReadable(false, false);
-                tempDir.setWritable(false, false);
-                tempDir.setExecutable(false, false);
-                
-                // Establecer permisos solo para el propietario
-                tempDir.setReadable(true);
-                tempDir.setWritable(true);
-                tempDir.setExecutable(true);
-            }
-            
-            LOGGER.fine("Created secure temporary directory: " + tempDirPath);
-            return new ExtFile(tempDirPath.toFile());
-            
-        } catch (IOException ex) {
-            // ✅ FALLBACK SEGURO: Si falla, usar el método original pero con cleanup
-            try {
-                LOGGER.fine("Falling back to File.createTempFile for compatibility");
-                File tempFile = File.createTempFile("APKTOOL", null);
-                tempFile.delete(); // Eliminar el archivo
-                tempFile.mkdir();  // Crear como directorio
-                
-                // Intentar establecer permisos en el fallback
-                try {
-                    tempFile.setReadable(false, false);
-                    tempFile.setWritable(false, false);
-                    tempFile.setExecutable(false, false);
-                    tempFile.setReadable(true);
-                    tempFile.setWritable(true);
-                    tempFile.setExecutable(true);
-                } catch (SecurityException se) {
-                    // Ignorar si no podemos establecer permisos
-                }
-                
-                return new ExtFile(tempFile);
-            } catch (IOException ex2) {
-                throw new AndrolibException("Failed to create secure temporary directory", ex2);
-            }
-        }
-    }
-
-    /**
-     * Safely cleans up temporary files/directories without throwing exceptions.
-     */
-    private void safeCleanup(ExtFile tmpFile) {
-        if (tmpFile == null || !tmpFile.exists()) {
-            return;
-        }
-        
-        try {
-            // Primero intentar eliminar como directorio
-            OS.rmdir(tmpFile);
-        } catch (Exception e1) {
-            try {
-                // Si falla, intentar eliminar como archivo
-                OS.rmfile(tmpFile);
-            } catch (Exception e2) {
-                // Si todo falla, solo loguear (no romper el flujo)
-                LOGGER.fine("Could not delete temporary file: " + tmpFile);
-            }
-        }
     }
 
     public void build(File outApk) throws AndrolibException {
@@ -389,8 +300,13 @@ public class ApkBuilder {
             LOGGER.info("Added permissive network security config in manifest");
         }
 
-        // ✅ CORRECCIÓN SEGURA: Línea 306 originalmente usaba File.createTempFile()
-        ExtFile tmpFile = createSecureTempFile();
+        ExtFile tmpFile;
+        try {
+            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
+        } catch (IOException ex) {
+            throw new AndrolibException(ex);
+        }
+        OS.rmfile(tmpFile);
 
         File resDir = new File(mApkDir, "res");
         File npDir = new File(mApkDir, "9patch");
@@ -410,8 +326,7 @@ public class ApkBuilder {
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         } finally {
-            // ✅ USAR LIMPIEZA SEGURA
-            safeCleanup(tmpFile);
+            OS.rmfile(tmpFile);
         }
     }
 
@@ -423,8 +338,13 @@ public class ApkBuilder {
             }
         }
 
-        // ✅ CORRECCIÓN SEGURA: Línea 344 originalmente usaba File.createTempFile()
-        ExtFile tmpFile = createSecureTempFile();
+        ExtFile tmpFile;
+        try {
+            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
+        } catch (IOException ex) {
+            throw new AndrolibException(ex);
+        }
+        OS.rmfile(tmpFile);
 
         File npDir = new File(mApkDir, "9patch");
         if (!npDir.isDirectory()) {
@@ -444,8 +364,7 @@ public class ApkBuilder {
             LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
             copyManifestRaw(outDir);
         } finally {
-            // ✅ USAR LIMPIEZA SEGURA
-            safeCleanup(tmpFile);
+            OS.rmfile(tmpFile);
         }
     }
 
