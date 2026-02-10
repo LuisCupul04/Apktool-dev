@@ -300,25 +300,11 @@ public class ApkBuilder {
         LOGGER.info("Added permissive network security config in manifest");
     }
 
-    ExtFile tmpFile = null;
+    ExtFile tmpDir = null;
     try {
-        // ✅ Crear ARCHIVO temporal de manera segura (AaptInvoker espera archivo, no directorio)
-        java.nio.file.Path tempFilePath = java.nio.file.Files.createTempFile("APKTOOL", ".tmp");
-        
-        // ✅ Establecer permisos restrictivos (solo propietario puede leer y escribir)
-        try {
-            java.nio.file.Files.setPosixFilePermissions(tempFilePath,
-                java.util.EnumSet.of(
-                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
-                )
-            );
-        } catch (java.nio.file.FileSystemException e) {
-            // Si el sistema de archivos no soporta permisos POSIX (ej. Windows), ignorar
-            // El archivo ya tiene los permisos por defecto del sistema
-        }
-        
-        tmpFile = new ExtFile(tempFilePath.toFile());
+        // ✅ CORRECCIÓN: Crear DIRECTORIO temporal (no archivo)
+        java.nio.file.Path tempDirPath = java.nio.file.Files.createTempDirectory("APKTOOL");
+        tmpDir = new ExtFile(tempDirPath.toFile());
         
         File resDir = new File(mApkDir, "res");
         File npDir = new File(mApkDir, "9patch");
@@ -329,21 +315,27 @@ public class ApkBuilder {
         LOGGER.info("Building resources with " + AaptManager.getBinaryName() + "...");
         
         AaptInvoker invoker = new AaptInvoker(mApkInfo, mConfig);
-        invoker.invoke(tmpFile, manifest, resDir, npDir, null, getIncludeFiles());
+        invoker.invoke(tmpDir, manifest, resDir, npDir, null, getIncludeFiles());
 
-        Directory tmpDir = tmpFile.getDirectory();
-        tmpDir.copyToDir(outDir, "AndroidManifest.xml");
-        tmpDir.copyToDir(outDir, "resources.arsc");
-        tmpDir.copyToDir(outDir, ApkInfo.RESOURCES_DIRNAMES);
+        Directory tmpDirectory = tmpDir.getDirectory();
+        tmpDirectory.copyToDir(outDir, "AndroidManifest.xml");
+        tmpDirectory.copyToDir(outDir, "resources.arsc");
+        tmpDirectory.copyToDir(outDir, ApkInfo.RESOURCES_DIRNAMES);
         
     } catch (IOException | DirectoryException ex) {
         throw new AndrolibException(ex);
     } finally {
-        if (tmpFile != null) {
-            OS.rmfile(tmpFile);  // ✅ Limpiar DESPUÉS de usar
+        if (tmpDir != null) {
+            try {
+                // ✅ Limpiar directorio temporal recursivamente
+                org.apache.commons.io.FileUtils.deleteDirectory(tmpDir);
+            } catch (IOException e) {
+                LOGGER.warning("Could not delete temp directory: " + e.getMessage());
+            }
         }
     }
 }
+
 private void buildManifest(File outDir, File manifest) throws AndrolibException {
     if (!mConfig.isForced()) {
         LOGGER.info("Checking whether AndroidManifest.xml has changed...");
@@ -352,24 +344,11 @@ private void buildManifest(File outDir, File manifest) throws AndrolibException 
         }
     }
 
-    ExtFile tmpFile = null;
+    ExtFile tmpDir = null;
     try {
-        // ✅ Crear ARCHIVO temporal de manera segura (AaptInvoker espera archivo, no directorio)
-        java.nio.file.Path tempFilePath = java.nio.file.Files.createTempFile("APKTOOL", ".tmp");
-        
-        // ✅ Establecer permisos restrictivos (solo propietario puede leer y escribir)
-        try {
-            java.nio.file.Files.setPosixFilePermissions(tempFilePath,
-                java.util.EnumSet.of(
-                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
-                )
-            );
-        } catch (java.nio.file.FileSystemException e) {
-            // Si el sistema de archivos no soporta permisos POSIX (ej. Windows), ignorar
-        }
-        
-        tmpFile = new ExtFile(tempFilePath.toFile());
+        // ✅ CORRECCIÓN: Crear DIRECTORIO temporal (no archivo)
+        java.nio.file.Path tempDirPath = java.nio.file.Files.createTempDirectory("APKTOOL");
+        tmpDir = new ExtFile(tempDirPath.toFile());
 
         File npDir = new File(mApkDir, "9patch");
         if (!npDir.isDirectory()) {
@@ -379,10 +358,10 @@ private void buildManifest(File outDir, File manifest) throws AndrolibException 
         LOGGER.info("Building AndroidManifest.xml with " + AaptManager.getBinaryName() + "...");
         
         AaptInvoker invoker = new AaptInvoker(mApkInfo, mConfig);
-        invoker.invoke(tmpFile, manifest, null, npDir, null, getIncludeFiles());
+        invoker.invoke(tmpDir, manifest, null, npDir, null, getIncludeFiles());
 
-        Directory tmpDir = tmpFile.getDirectory();
-        tmpDir.copyToDir(outDir, "AndroidManifest.xml");
+        Directory tmpDirectory = tmpDir.getDirectory();
+        tmpDirectory.copyToDir(outDir, "AndroidManifest.xml");
         
     } catch (IOException | DirectoryException ex) {
         throw new AndrolibException(ex);
@@ -390,8 +369,13 @@ private void buildManifest(File outDir, File manifest) throws AndrolibException 
         LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
         copyManifestRaw(outDir);
     } finally {
-        if (tmpFile != null) {
-            OS.rmfile(tmpFile);  // ✅ Limpiar DESPUÉS de usar
+        if (tmpDir != null) {
+            try {
+                // ✅ Limpiar directorio temporal recursivamente
+                org.apache.commons.io.FileUtils.deleteDirectory(tmpDir);
+            } catch (IOException e) {
+                LOGGER.warning("Could not delete temp directory: " + e.getMessage());
+            }
         }
     }
 }
