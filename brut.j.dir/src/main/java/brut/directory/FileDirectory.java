@@ -25,6 +25,8 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -106,7 +108,13 @@ public class FileDirectory extends AbstractDirectory {
     }
 
     private String generatePath(String name) {
-        return getDir().getPath() + separator + name;
+        // Prevent directory traversal outside of the base directory
+        Path basePath = getDir().toPath().toAbsolutePath().normalize();
+        Path resolved = basePath.resolve(name).normalize();
+        if (!resolved.startsWith(basePath)) {
+            throw new IllegalArgumentException("Path traversal attempt detected for name: " + name);
+        }
+        return resolved.toString();
     }
 
     private void loadAll() {
