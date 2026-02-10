@@ -198,8 +198,14 @@ public class ZipRODirectory extends AbstractDirectory {
                 // Malformed path, skip it
                 continue;
             }
+
+            // Reject absolute relative paths
             if (relPath.isAbsolute()) {
-            // Reject any parent-directory segments in the relative path
+                // Escapes above the logical root, skip this entry
+                continue;
+            }
+
+            // Reject any parent-directory segments or empty segments in the relative path
             boolean relHasParentSegment = false;
             for (Path segment : relPath) {
                 String seg = segment.toString();
@@ -209,9 +215,6 @@ public class ZipRODirectory extends AbstractDirectory {
                 }
             }
             if (relHasParentSegment) {
-                continue;
-            }
-                // Escapes above the logical root, skip this entry
                 continue;
             }
 
@@ -227,10 +230,10 @@ public class ZipRODirectory extends AbstractDirectory {
                     continue;
                 }
             } else {
-            // Final sanity check on directory subname
-            if (subname.isEmpty() || subname.equals("..") || subname.indexOf('/') != -1 || subname.indexOf('\\') != -1) {
-                continue;
-            }
+                // Final sanity check on directory subname
+                if (subname.isEmpty() || subname.equals("..") || subname.indexOf('/') != -1 || subname.indexOf('\\') != -1) {
+                    continue;
+                }
 
                 subname = subname.substring(0, pos);
             }
