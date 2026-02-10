@@ -177,12 +177,25 @@ public final class OS {
 
     public static File createTempDirectory() throws BrutException {
         try {
-            // Use NIO to create a secure temporary directory with appropriate permissions.
-            return Files.createTempDirectory("BRUT").toFile();
+            java.nio.file.Path tempDirPath = java.nio.file.Files.createTempDirectory("apktool_");
+            File tempDir = tempDirPath.toFile();
+        
+            tempDir.setReadable(false, false);
+            tempDir.setWritable(false, false);
+            tempDir.setExecutable(false, false);
+        
+            tempDir.setReadable(true, true);
+            tempDir.setWritable(true, true);
+            tempDir.setExecutable(true, true);
+        
+            tempDir.deleteOnExit();
+        
+            return tempDir;
         } catch (IOException ex) {
             throw new BrutException("Could not create tmp dir", ex);
         }
     }
+
 
     private static class StreamForwarder extends Thread {
         private final InputStream mIn;
