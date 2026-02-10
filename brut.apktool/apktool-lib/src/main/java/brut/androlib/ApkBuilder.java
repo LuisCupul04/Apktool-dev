@@ -343,7 +343,7 @@ public class ApkBuilder {
             LOGGER.info("Added permissive network security config in manifest");
         }
 
-        // ✅ CORRECCIÓN: Usar directorio temporal seguro en lugar de archivo temporal
+        // CORRECCION: Usar directorio temporal seguro en lugar de archivo temporal
         ExtFile tmpFile = createSecureTempDirectory();
 
         File resDir = new File(mApkDir, "res");
@@ -364,7 +364,7 @@ public class ApkBuilder {
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         } finally {
-            // ✅ CORRECCIÓN CRÍTICA: Usar rmdir en lugar de rmfile para directorios
+            // CORRECCION CRITICA: Usar rmdir en lugar de rmfile para directorios
             OS.rmdir(tmpFile);
         }
     }
@@ -377,7 +377,7 @@ public class ApkBuilder {
             }
         }
 
-        // ✅ CORRECCIÓN: Usar directorio temporal seguro en lugar de archivo temporal
+        // CORRECCION: Usar directorio temporal seguro en lugar de archivo temporal
         ExtFile tmpFile = createSecureTempDirectory();
 
         File npDir = new File(mApkDir, "9patch");
@@ -398,7 +398,7 @@ public class ApkBuilder {
             LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
             copyManifestRaw(outDir);
         } finally {
-            // ✅ CORRECCIÓN CRÍTICA: Usar rmdir en lugar de rmfile para directorios
+            // CORRECCION CRITICA: Usar rmdir en lugar de rmfile para directorios
             OS.rmdir(tmpFile);
         }
     }
