@@ -37,6 +37,8 @@ import brut.util.ZipUtils;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -300,13 +302,8 @@ public class ApkBuilder {
             LOGGER.info("Added permissive network security config in manifest");
         }
 
-        ExtFile tmpFile;
-        try {
-            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
-        } catch (IOException ex) {
-            throw new AndrolibException(ex);
-        }
-        OS.rmfile(tmpFile);
+        TempAaptFile tempAaptFile = createPrivateTempAaptFile();
+        ExtFile tmpFile = tempAaptFile.outputFile;
 
         File resDir = new File(mApkDir, "res");
         File npDir = new File(mApkDir, "9patch");
@@ -326,7 +323,7 @@ public class ApkBuilder {
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         } finally {
-            OS.rmfile(tmpFile);
+            cleanupTempAaptFile(tempAaptFile);
         }
     }
 
@@ -338,13 +335,8 @@ public class ApkBuilder {
             }
         }
 
-        ExtFile tmpFile;
-        try {
-            tmpFile = new ExtFile(File.createTempFile("APKTOOL", null));
-        } catch (IOException ex) {
-            throw new AndrolibException(ex);
-        }
-        OS.rmfile(tmpFile);
+        TempAaptFile tempAaptFile = createPrivateTempAaptFile();
+        ExtFile tmpFile = tempAaptFile.outputFile;
 
         File npDir = new File(mApkDir, "9patch");
         if (!npDir.isDirectory()) {
@@ -364,7 +356,52 @@ public class ApkBuilder {
             LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
             copyManifestRaw(outDir);
         } finally {
-            OS.rmfile(tmpFile);
+            cleanupTempAaptFile(tempAaptFile);
+        }
+    }
+
+    private TempAaptFile createPrivateTempAaptFile() throws AndrolibException {
+        try {
+            Path tempDir = Files.createTempDirectory("APKTOOL");
+            File tempDirectory = tempDir.toFile();
+            secureTempDirectory(tempDir, tempDirectory);
+
+            return new TempAaptFile(new ExtFile(tempDir.resolve("aapt-output.apk").toFile()), tempDirectory);
+        } catch (IOException ex) {
+            throw new AndrolibException(ex);
+        }
+    }
+
+    private void secureTempDirectory(Path tempDir, File tempDirectory) throws IOException {
+        try {
+            Files.setPosixFilePermissions(tempDir, PosixFilePermissions.fromString("rwx------"));
+            return;
+        } catch (UnsupportedOperationException ignored) {
+            // Non-POSIX file systems (for example Windows) fall back to File API permissions.
+        }
+
+        if (!tempDirectory.setReadable(false, false)
+                || !tempDirectory.setWritable(false, false)
+                || !tempDirectory.setExecutable(false, false)
+                || !tempDirectory.setReadable(true, true)
+                || !tempDirectory.setWritable(true, true)
+                || !tempDirectory.setExecutable(true, true)) {
+            throw new IOException("Could not set secure permissions on temp directory: " + tempDirectory);
+        }
+    }
+
+    private void cleanupTempAaptFile(TempAaptFile tempAaptFile) {
+        OS.rmfile(tempAaptFile.outputFile);
+        OS.rmdir(tempAaptFile.tempDirectory);
+    }
+
+    private static final class TempAaptFile {
+        private final ExtFile outputFile;
+        private final File tempDirectory;
+
+        private TempAaptFile(ExtFile outputFile, File tempDirectory) {
+            this.outputFile = outputFile;
+            this.tempDirectory = tempDirectory;
         }
     }
 

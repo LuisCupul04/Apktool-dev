@@ -163,7 +163,7 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     name: Build Release Artifact
-    if: github.repository == 'LuisCupul04/Apktool' && github.ref == 'refs/heads/main'
+    if: github.repository == 'LuisCupul04/Apktool' && github.ref == 'refs/heads/master'
     needs: build-and-test
     permissions:
       contents: read
