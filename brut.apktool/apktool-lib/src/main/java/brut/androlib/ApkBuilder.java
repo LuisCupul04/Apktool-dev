@@ -102,6 +102,43 @@ public class ApkBuilder {
         }
     }
 
+    /**
+     * Safely deletes a directory recursively, handling errors gracefully.
+     */
+    private void deleteTempDirectoryRecursively(File dir) {
+        if (dir == null || !dir.exists()) {
+            return;
+        }
+        
+        try {
+            // Try to delete using OS.rmdir first (might handle recursive deletion)
+            OS.rmdir(dir);
+        } catch (Exception e) {
+            // If OS.rmdir fails, try recursive deletion manually
+            LOGGER.fine("OS.rmdir failed, attempting recursive deletion: " + dir);
+            deleteRecursive(dir);
+        }
+    }
+    
+    /**
+     * Recursively delete a directory.
+     */
+    private void deleteRecursive(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+        
+        // Don't throw exception if delete fails, just log
+        if (!file.delete()) {
+            LOGGER.fine("Could not delete temp file: " + file);
+        }
+    }
+
     public void build(File outApk) throws AndrolibException {
         if (mConfig.getJobs() > 1) {
             mWorker = new BackgroundWorker(mConfig.getJobs() - 1);
@@ -343,7 +380,7 @@ public class ApkBuilder {
             LOGGER.info("Added permissive network security config in manifest");
         }
 
-        // CORRECCION: Usar directorio temporal seguro en lugar de archivo temporal
+        // Usar directorio temporal seguro
         ExtFile tmpFile = createSecureTempDirectory();
 
         File resDir = new File(mApkDir, "res");
@@ -364,8 +401,8 @@ public class ApkBuilder {
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         } finally {
-            // CORRECCION CRITICA: Usar rmdir en lugar de rmfile para directorios
-            OS.rmdir(tmpFile);
+            // SOLUCION FINAL: Usar eliminacion recursiva en lugar de OS.rmdir
+            deleteTempDirectoryRecursively(tmpFile);
         }
     }
 
@@ -377,7 +414,7 @@ public class ApkBuilder {
             }
         }
 
-        // CORRECCION: Usar directorio temporal seguro en lugar de archivo temporal
+        // Usar directorio temporal seguro
         ExtFile tmpFile = createSecureTempDirectory();
 
         File npDir = new File(mApkDir, "9patch");
@@ -398,8 +435,8 @@ public class ApkBuilder {
             LOGGER.warning("Parse AndroidManifest.xml failed, treat it as raw file.");
             copyManifestRaw(outDir);
         } finally {
-            // CORRECCION CRITICA: Usar rmdir en lugar de rmfile para directorios
-            OS.rmdir(tmpFile);
+            // SOLUCION FINAL: Usar eliminacion recursiva en lugar de OS.rmdir
+            deleteTempDirectoryRecursively(tmpFile);
         }
     }
 
