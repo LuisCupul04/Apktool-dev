@@ -154,11 +154,33 @@ public class ApkBuilder {
 
     private boolean copySourcesRaw(File outDir, String fileName) throws AndrolibException {
         File working = new File(mApkDir, fileName);
+        try {
+            // Ensure that the source file path does not escape the decoded APK directory
+            File canonicalBase = mApkDir.getCanonicalFile();
+            File canonicalWorking = working.getCanonicalFile();
+            if (!canonicalWorking.toPath().startsWith(canonicalBase.toPath())) {
+                throw new AndrolibException("Invalid source file path: " + fileName);
+            }
+        } catch (IOException ex) {
+            throw new AndrolibException("Failed to resolve source file path: " + fileName, ex);
+        }
+
         if (!working.isFile()) {
             return false;
         }
 
         File stored = new File(outDir, fileName);
+        try {
+            // Ensure that the destination file path does not escape the output directory
+            File canonicalOutBase = outDir.getCanonicalFile();
+            File canonicalStored = stored.getCanonicalFile();
+            if (!canonicalStored.toPath().startsWith(canonicalOutBase.toPath())) {
+                throw new AndrolibException("Invalid destination file path: " + fileName);
+            }
+        } catch (IOException ex) {
+            throw new AndrolibException("Failed to resolve destination file path: " + fileName, ex);
+        }
+
         if (!mConfig.isForced() && !isModified(working, stored)) {
             return true;
         }
@@ -185,6 +207,17 @@ public class ApkBuilder {
             });
         } else {
             buildSourcesSmaliJob(outDir, dirName, fileName);
+        try {
+            // Ensure that the smali directory path does not escape the decoded APK directory
+            File canonicalBase = mApkDir.getCanonicalFile();
+            File canonicalSmaliDir = smaliDir.getCanonicalFile();
+            if (!canonicalSmaliDir.toPath().startsWith(canonicalBase.toPath())) {
+                throw new AndrolibException("Invalid smali directory path: " + dirName);
+            }
+        } catch (IOException ex) {
+            throw new AndrolibException("Failed to resolve smali directory path: " + dirName, ex);
+        }
+
         }
     }
 
