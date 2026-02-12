@@ -130,65 +130,66 @@ public class ZipRODirectory extends AbstractDirectory {
         mFiles = new LinkedHashSet<>();
         mDirs = new LinkedHashMap<>();
 
-    int prefixLen = getPath().length();
+        int prefixLen = getPath().length();
         Enumeration<? extends ZipEntry> entries = getZipFile().entries();
         while (entries.hasMoreElements()) {
-        ZipEntry entry = entries.nextElement();
-        String name = entry.getName();
+            ZipEntry entry = entries.nextElement();
+            String name = entry.getName();
 
-        if (name.equals(getPath()) || !name.startsWith(getPath())) {
-            continue;
-        }
-
-        String relPath = name.substring(prefixLen);
-        if (isPathTraversal(relPath)) {
-            continue;
-        }
-
-        String subname = relPath;
-
-        int pos = subname.indexOf(separator);
-        if (pos == -1) {
-            if (!entry.isDirectory()) {
-                mFiles.add(subname);
+            if (name.equals(getPath()) || !name.startsWith(getPath())) {
                 continue;
             }
-        } else {
-            subname = subname.substring(0, pos);
-        }
 
-        if (!mDirs.containsKey(subname)) {
-            AbstractDirectory dir = new ZipRODirectory(getZipFile(), getPath() + subname + separator);
-            mDirs.put(subname, dir);
+            String relPath = name.substring(prefixLen);
+            if (isPathTraversal(relPath)) {
+                continue;
+            }
+
+            String subname = relPath;
+
+            int pos = subname.indexOf(separator);
+            if (pos == -1) {
+                if (!entry.isDirectory()) {
+                    mFiles.add(subname);
+                    continue;
+                }
+            } else {
+                subname = subname.substring(0, pos);
+            }
+
+            if (!mDirs.containsKey(subname)) {
+                AbstractDirectory dir = new ZipRODirectory(getZipFile(), getPath() + subname + separator);
+                mDirs.put(subname, dir);
+            }
         }
     }
-}
 
     private boolean isPathTraversal(String relPath) {
-    if (relPath == null || relPath.isEmpty()) {
+        if (relPath == null || relPath.isEmpty()) {
+            return false;
+        }
+
+        String normalized = relPath.replace('\\', '/');
+
+        String[] components = normalized.split("/");
+        int depth = 0;
+
+        for (String component : components) {
+            if (component.isEmpty() || component.equals(".")) {
+                continue;
+            }
+            if (component.equals("..")) {
+                depth--;
+                if (depth < 0) {
+                    return true;
+                }
+            } else {
+                depth++;
+            }
+        }
         return false;
     }
-    
-    String normalized = relPath.replace('\\', '/');
-    
-    String[] components = normalized.split("/");
-    int depth = 0;
-    
-    for (String component : components) {
-        if (component.isEmpty() || component.equals(".")) {
-            continue;
-        }
-        if (component.equals("..")) {
-            depth--;
-            if (depth < 0) {
-                return true; 
-            }
-        } else {
-            depth++;
-        }
-    }
-    return false;
-}
+
     private String getPath() {
         return mPath;
     }
